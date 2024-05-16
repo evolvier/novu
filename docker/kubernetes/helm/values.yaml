@@ -1768,6 +1768,7 @@ localstack:
 ## @param externalDatabase.password Password for external mongoDB database
 ## @param externalDatabase.database Database name for external mongoDB database
 externalDatabase:
+  uri: ''
   host: mongodb.local
   port: 27017
   username: 'novu'
