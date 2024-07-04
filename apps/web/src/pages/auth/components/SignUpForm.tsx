@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
@@ -7,12 +7,12 @@ import { passwordConstraints, UTM_CAMPAIGN_QUERY_PARAM } from '@novu/shared';
 import type { IResponseError } from '@novu/shared';
 import { PasswordInput, Button, colors, Input, Text, Checkbox } from '@novu/design-system';
 
-import { useAuth } from '@novu/shared-web';
+import { useAuth } from '../../../hooks/useAuth';
 import { api } from '../../../api/api.client';
-import { useVercelParams } from '../../../hooks';
+import { useRedirectURL, useVercelParams } from '../../../hooks';
 import { useAcceptInvite } from './useAcceptInvite';
 import { PasswordRequirementPopover } from './PasswordRequirementPopover';
-import { ROUTES } from '../../../constants/routes.enum';
+import { ROUTES } from '../../../constants/routes';
 import { OAuth } from './OAuth';
 
 type SignUpFormProps = {
@@ -28,6 +28,9 @@ export type SignUpFormInputType = {
 
 export function SignUpForm({ invitationToken, email }: SignUpFormProps) {
   const navigate = useNavigate();
+  const { setRedirectURL } = useRedirectURL();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => setRedirectURL(), []);
 
   const { login } = useAuth();
   const { isLoading: isAcceptInviteLoading, acceptInvite } = useAcceptInvite();
@@ -56,16 +59,17 @@ export function SignUpForm({ invitationToken, email }: SignUpFormProps) {
 
     const response = await mutateAsync(itemData);
     const token = (response as any).token;
-    login(token);
+    await login(token);
 
     if (invitationToken) {
       const updatedToken = await acceptInvite(invitationToken);
       if (updatedToken) {
-        login(updatedToken);
+        await login(updatedToken);
       }
+      navigate(ROUTES.AUTH_APPLICATION);
+    } else {
+      navigate(isFromVercel ? `${ROUTES.AUTH_APPLICATION}?${params.toString()}` : ROUTES.AUTH_APPLICATION);
     }
-
-    navigate(isFromVercel ? `${ROUTES.AUTH_APPLICATION}?${params.toString()}` : ROUTES.AUTH_APPLICATION);
   };
 
   const {
@@ -103,7 +107,7 @@ export function SignUpForm({ invitationToken, email }: SignUpFormProps) {
 
   return (
     <>
-      <OAuth />
+      <OAuth invitationToken={invitationToken} />
       <form noValidate name="login-form" onSubmit={handleSubmit(onSubmit)}>
         <Input
           error={errors.fullName?.message}

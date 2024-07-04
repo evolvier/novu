@@ -1,4 +1,4 @@
-import {
+import type {
   IPreferenceChannels,
   NotificationTemplateCustomData,
 } from '@novu/shared';
@@ -53,6 +53,8 @@ export type PreferenceSettingsType = {
 export type ApiOptions = {
   apiVersion?: string;
   backendUrl?: string;
+  userAgent?: string;
 };
 
 export { ApiService } from './api/api.service';
+export { HttpClient } from './http-client';

@@ -3,7 +3,7 @@ import { Badge } from '@mantine/core';
 
 import { TemplateItem } from './templates-store/templateStoreStyles';
 import { useSegment } from '../../../components/providers/SegmentProvider';
-import { useAuth } from '@novu/shared-web';
+import { useAuth } from '../../../hooks/useAuth';
 
 const SEGMENT_EVENT = 'Button Clicked - [Echo promotion]';
 const segmentEventAction = {
@@ -14,7 +14,7 @@ const segmentEventAction = {
 
 const handleEchoClick = (event: React.MouseEvent<HTMLButtonElement | HTMLDivElement>) => {
   event.preventDefault();
-  window.open('https://docs.novu.co/echo/introduction', '_blank');
+  window.open('https://docs.novu.co/framework/introduction', '_blank');
 };
 
 const NewBadge = (props) => {

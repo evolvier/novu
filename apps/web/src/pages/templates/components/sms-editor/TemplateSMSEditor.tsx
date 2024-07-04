@@ -3,7 +3,7 @@ import { ChannelTypeEnum } from '@novu/shared';
 
 import { LackIntegrationAlert } from '../LackIntegrationAlert';
 import {
-  useEnvController,
+  useEnvironment,
   useHasActiveIntegrations,
   useGetPrimaryIntegration,
   useVariablesManager,
@@ -18,18 +18,15 @@ import { CustomCodeEditor } from '../CustomCodeEditor';
 import { SmsPreview } from '../../../../components/workflow/preview';
 import { EditVariablesModal } from '../EditVariablesModal';
 import { useTemplateEditorForm } from '../TemplateEditorFormProvider';
-import { colors, When } from '@novu/design-system';
-import { InputVariables } from '../InputVariables';
-import { InputVariablesForm } from '../InputVariablesForm';
+import { When } from '@novu/design-system';
+import { ControlVariablesForm } from '../ControlVariablesForm';
 
 const templateFields = ['content'];
-const PREVIEW = 'Preview';
-const INPUTS = 'Inputs';
 
 export function TemplateSMSEditor() {
   const [editVariablesModalOpened, setEditVariablesModalOpen] = useState(false);
   const { template } = useTemplateEditorForm();
-  const { environment, chimera } = useEnvController({}, template?.chimera);
+  const { environment, bridge } = useEnvironment({}, template?.bridge);
   const stepFormPath = useStepFormPath();
   const { control } = useFormContext();
   const variablesArray = useVariablesManager(templateFields);
@@ -40,9 +37,7 @@ export function TemplateSMSEditor() {
     channelType: ChannelTypeEnum.SMS,
   });
   const { isPreviewLoading, handleContentChange } = useEditTemplateContent();
-  const [inputVariables, setInputVariables] = useState();
-  const [activeTab, setActiveTab] = useState<string>(PREVIEW);
-  const theme = useMantineTheme();
+  const [controlVariables, setControlVariables] = useState();
 
   return (
     <>
@@ -70,9 +65,9 @@ export function TemplateSMSEditor() {
                   openEditVariablesModal={() => {
                     setEditVariablesModalOpen(true);
                   }}
-                  label={chimera ? 'Input variables' : undefined}
+                  label={bridge ? 'Control variables' : undefined}
                 />
-                <When truthy={!chimera}>
+                <When truthy={!bridge}>
                   <CustomCodeEditor
                     value={(field.value as string) || ''}
                     onChange={(value) => {
@@ -80,10 +75,10 @@ export function TemplateSMSEditor() {
                     }}
                   />
                 </When>
-                <When truthy={chimera}>
-                  <InputVariablesForm
+                <When truthy={bridge}>
+                  <ControlVariablesForm
                     onChange={(values) => {
-                      setInputVariables(values);
+                      setControlVariables(values);
                     }}
                   />
                 </When>
@@ -92,7 +87,7 @@ export function TemplateSMSEditor() {
           />
         </Grid.Col>
         <Grid.Col span={'content'}>
-          <SmsPreview inputVariables={inputVariables} showPreviewAsLoading={isPreviewLoading} />
+          <SmsPreview controlVariables={controlVariables} showPreviewAsLoading={isPreviewLoading} />
         </Grid.Col>
       </Grid>
       <EditVariablesModal

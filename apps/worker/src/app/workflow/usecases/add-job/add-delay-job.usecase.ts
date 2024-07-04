@@ -4,7 +4,7 @@ import { JobRepository, JobStatusEnum } from '@novu/dal';
 import { DelayTypeEnum, ExecutionDetailsSourceEnum, ExecutionDetailsStatusEnum, StepTypeEnum } from '@novu/shared';
 import {
   ApiException,
-  CalculateDelayService,
+  ComputeJobWaitDurationService,
   DetailEnum,
   ExecutionLogRoute,
   ExecutionLogRouteCommand,
@@ -17,8 +17,8 @@ import { AddJobCommand } from './add-job.command';
 export class AddDelayJob {
   constructor(
     private jobRepository: JobRepository,
-    @Inject(forwardRef(() => CalculateDelayService))
-    private calculateDelayService: CalculateDelayService,
+    @Inject(forwardRef(() => ComputeJobWaitDurationService))
+    private computeJobWaitDurationService: ComputeJobWaitDurationService,
     @Inject(forwardRef(() => ExecutionLogRoute))
     private executionLogRoute: ExecutionLogRoute
   ) {}
@@ -38,17 +38,10 @@ export class AddDelayJob {
     let delay;
 
     try {
-      delay = this.calculateDelayService.calculateDelay({
-        stepMetadata: data.step.metadata,
+      delay = this.computeJobWaitDurationService.calculateDelay({
+        stepMetadata: data.step.bridgeUrl ? data.digest : data.step.metadata,
         payload: data.payload,
         overrides: data.overrides,
-        // TODO: Remove fallback after other delay types are implemented.
-        chimeraResponse: command.chimeraResponse?.outputs
-          ? {
-              type: DelayTypeEnum.REGULAR,
-              ...command.chimeraResponse?.outputs,
-            }
-          : undefined,
       });
 
       await this.jobRepository.updateStatus(command.environmentId, data._id, JobStatusEnum.DELAYED);

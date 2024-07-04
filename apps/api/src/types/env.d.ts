@@ -21,6 +21,8 @@ declare global {
       DISABLE_USER_REGISTRATION: `${boolean}`;
       IS_API_IDEMPOTENCY_ENABLED: `${boolean}`;
       FRONT_BASE_URL: string;
+      // @deprecated use FRONT_BASE_URL
+      LEGACY_V1_FRONT_BASE_URL: string;
       API_ROOT_URL: string;
       SENTRY_DSN: string;
       STRIPE_API_KEY: string;
@@ -28,6 +30,9 @@ declare global {
       NOTIFICATION_RETENTION_DAYS?: number;
       MESSAGE_GENERIC_RETENTION_DAYS?: number;
       MESSAGE_IN_APP_RETENTION_DAYS?: number;
+      NOVU_INVITE_TEAM_MEMBER_NUDGE_TRIGGER_IDENTIFIER: string;
+      HUBSPOT_INVITE_NUDGE_EMAIL_USER_LIST_ID: string;
+      HUBSPOT_PRIVATE_APP_ACCESS_TOKEN: string;
     }
   }
 }

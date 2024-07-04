@@ -13,7 +13,8 @@ import { TextRowContent } from './TextRowContent';
 import type { IForm, IFormStep, ITemplates } from '../formTypes';
 import { useStepFormPath } from '../../hooks/useStepFormPath';
 import { FeatureFlagsKeysEnum } from '@novu/shared';
-import { ROUTES, useFeatureFlag } from '@novu/shared-web';
+import { ROUTES } from '../../../../constants/routes';
+import { useFeatureFlag } from '../../../../hooks/useFeatureFlag';
 
 interface IStepEntityExtended extends IFormStep {
   template: ITemplates & {
@@ -32,7 +33,6 @@ export function EmailMessageEditor({
   branding: { color: string; logo: string } | undefined;
   readonly: boolean;
 }) {
-  const isInformationArchitectureEnabled = useFeatureFlag(FeatureFlagsKeysEnum.IS_INFORMATION_ARCHITECTURE_ENABLED);
   const methods = useFormContext<IFormExtended>();
   const stepFormPath = useStepFormPath();
   const contentBlocks = useFieldArray<IFormExtended, any, 'id' | 'type'>({
@@ -85,15 +85,10 @@ export function EmailMessageEditor({
     return null;
   }
 
-  function getBrandSettingsUrl(): string {
-    // TODO: update when Information Architecture is fully-released
-    return isInformationArchitectureEnabled ? ROUTES.BRAND_SETTINGS : ROUTES.BRAND;
-  }
-
   return (
     <Card withBorder sx={styledCard}>
       <Container pl={0} pr={0}>
-        <div onClick={() => !branding?.logo && navigate(getBrandSettingsUrl())} role="link">
+        <div onClick={() => !branding?.logo && navigate(ROUTES.BRAND_SETTINGS)} role="link">
           <Dropzone
             styles={{
               inner: {

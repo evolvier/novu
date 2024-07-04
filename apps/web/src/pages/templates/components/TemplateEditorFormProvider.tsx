@@ -119,17 +119,12 @@ export const makeVariantFromStep = (
   };
 };
 
-interface AddVariantResult {
-  variant: IFormStep;
-  variantIndex: number;
-}
-
-interface INotificationTemplateWithChimera extends INotificationTemplate {
-  chimera?: boolean;
+interface INotificationTemplateWithBridge extends INotificationTemplate {
+  bridge?: boolean;
 }
 
 interface ITemplateEditorFormContext {
-  template?: INotificationTemplateWithChimera;
+  template?: INotificationTemplateWithBridge;
   isLoading: boolean;
   isCreating: boolean;
   isUpdating: boolean;
@@ -175,7 +170,7 @@ const defaultValues: IForm = {
 const TemplateEditorFormProvider = ({ children }) => {
   const { templateId = '' } = useParams<{ templateId?: string }>();
   const methods = useForm<IForm>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema as any),
     defaultValues,
     mode: 'onChange',
   });
@@ -303,8 +298,8 @@ const TemplateEditorFormProvider = ({ children }) => {
     () => ({
       template: {
         ...template,
-        chimera: template?.type === NotificationTemplateTypeEnum.ECHO,
-      } as INotificationTemplateWithChimera,
+        bridge: template?.type === NotificationTemplateTypeEnum.ECHO,
+      } as INotificationTemplateWithBridge,
       isLoading: isLoading || loadingGroups,
       isCreating,
       isUpdating,

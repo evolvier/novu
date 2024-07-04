@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
+import * as inlineCss from 'inline-css';
+import * as Sentry from '@sentry/node';
 
 import {
   MessageRepository,
@@ -19,7 +21,6 @@ import {
   IEmailOptions,
   LogCodeEnum,
 } from '@novu/shared';
-import * as Sentry from '@sentry/node';
 import {
   InstrumentUsecase,
   DetailEnum,
@@ -31,9 +32,9 @@ import {
   SelectVariant,
   ExecutionLogRoute,
   ExecutionLogRouteCommand,
-  IChimeraEmailResponse,
 } from '@novu/application-generic';
-import * as inlineCss from 'inline-css';
+import { EmailOutput } from '@novu/framework';
+
 import { CreateLog } from '../../../shared/logs';
 import { SendMessageCommand } from './send-message.command';
 import { SendMessageBase } from './send-message.base';
@@ -151,10 +152,10 @@ export class SendMessageEmail extends SendMessageBase {
       command.overrides.email || {},
       command.overrides[integration?.providerId] || {}
     );
-    const chimeraOutputs = command.chimeraData?.outputs;
+    const bridgeOutputs = command.bridgeData?.outputs;
 
     let html;
-    let subject = (chimeraOutputs as IChimeraEmailResponse)?.subject || step?.template?.subject || '';
+    let subject = (bridgeOutputs as EmailOutput)?.subject || step?.template?.subject || '';
     let content;
     let senderName;
 
@@ -187,6 +188,7 @@ export class SendMessageEmail extends SendMessageBase {
       overrides,
       templateIdentifier: command.identifier,
       _jobId: command.jobId,
+      tags: command.tags,
     });
 
     let replyToAddress: string | undefined;
@@ -203,7 +205,7 @@ export class SendMessageEmail extends SendMessageBase {
     }
 
     try {
-      if (!command.chimeraData) {
+      if (!command.bridgeData) {
         ({ html, content, subject, senderName } = await this.compileEmailTemplateUsecase.execute(
           CompileEmailTemplateCommand.create({
             environmentId: command.environmentId,
@@ -235,7 +237,7 @@ export class SendMessageEmail extends SendMessageBase {
         });
       }
     } catch (e) {
-      Logger.error({ payload }, 'Compiling the email template or storing it or inlining it has failed', LOG_CONTEXT);
+      Logger.error({ payload, e }, 'Compiling the email template or storing it or inlining it has failed', LOG_CONTEXT);
       await this.sendErrorHandlebars(command.job, e.message);
 
       return;
@@ -268,7 +270,7 @@ export class SendMessageEmail extends SendMessageBase {
       {
         to: email,
         subject: subject,
-        html: (chimeraOutputs as IChimeraEmailResponse)?.body || html,
+        html: (bridgeOutputs as EmailOutput)?.body || html,
         from: integration?.credentials.from || 'no-reply@novu.co',
         attachments,
         senderName,

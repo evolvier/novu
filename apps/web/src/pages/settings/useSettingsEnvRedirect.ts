@@ -1,4 +1,5 @@
-import { BaseEnvironmentEnum, useEnvController } from '@novu/shared-web';
+import { useEnvironment } from '../../hooks';
+import { BaseEnvironmentEnum } from '../../constants/BaseEnvironmentEnum';
 import { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -9,7 +10,7 @@ const VALID_ENV_VALUES = new Set(Object.values(BaseEnvironmentEnum));
 /** Redirect the user to a valid page if an invalid URL param is provided for env */
 export const useSettingsEnvRedirect = () => {
   const { env } = useParams<typeof URL_PARAM>();
-  const { environment, isLoading } = useEnvController();
+  const { environment, isLoading } = useEnvironment();
   const navigate = useNavigate();
 
   useEffect(() => {

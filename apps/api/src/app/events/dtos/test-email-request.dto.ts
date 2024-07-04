@@ -29,7 +29,7 @@ export class TestSendEmailRequestDto {
 
   @IsOptional()
   @IsBoolean()
-  chimera?: boolean = false;
+  bridge?: boolean = false;
 
   @IsOptional()
   @IsString()
@@ -41,4 +41,6 @@ export class TestSendEmailRequestDto {
 
   @IsOptional()
   inputs: any;
+  @IsOptional()
+  controls: any;
 }

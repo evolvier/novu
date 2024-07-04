@@ -7,7 +7,7 @@ import styled from '@emotion/styled';
 import { ChannelTypeEnum, MemberStatusEnum } from '@novu/shared';
 
 import { errorMessage, successMessage } from '../../../../utils/notifications';
-import { useAuth } from '@novu/shared-web';
+import { useAuth } from '../../../../hooks';
 import {
   Button,
   Text,
@@ -29,10 +29,10 @@ import { useTemplateEditorForm } from '../TemplateEditorFormProvider';
 
 export function TestSendEmail({
   isIntegrationActive,
-  chimera = false,
+  bridge = false,
 }: {
   isIntegrationActive: boolean;
-  chimera?: boolean;
+  bridge?: boolean;
 }) {
   const { currentUser } = useAuth();
   const { control, watch } = useFormContext<IForm>();
@@ -68,7 +68,7 @@ export function TestSendEmail({
 
   const processedVariables = useProcessVariables(template.variables);
   const [payloadValue, setPayloadValue] = useState('{}');
-  const [stepInputs, setStepInputs] = useState('{}');
+  const [stepControls, setStepControls] = useState('{}');
 
   useEffect(() => {
     setPayloadValue(processedVariables);
@@ -76,7 +76,7 @@ export function TestSendEmail({
 
   const onTestEmail = async () => {
     const payload = JSON.parse(payloadValue);
-    const inputs = JSON.parse(stepInputs);
+    const controls = JSON.parse(stepControls);
 
     try {
       await testSendEmailEvent({
@@ -86,10 +86,11 @@ export function TestSendEmail({
         subject: '',
         ...template,
         payload,
-        inputs,
+        inputs: controls,
+        controls,
         to: sendTo,
-        chimera,
-        content: chimera
+        bridge,
+        content: bridge
           ? ''
           : template.contentType === 'customHtml'
           ? (template.htmlContent as string)
@@ -142,7 +143,7 @@ export function TestSendEmail({
           mt={20}
           autosize
           styles={inputStyles}
-          label={chimera ? 'Trigger Data' : 'Variables'}
+          label={bridge ? 'Trigger Data' : 'Variables'}
           value={payloadValue}
           onChange={setPayloadValue}
           minRows={12}
@@ -158,16 +159,16 @@ export function TestSendEmail({
           }
         />
 
-        {chimera ? (
+        {bridge ? (
           <JsonInput
-            data-test-id="test-email-json-inputs"
+            data-test-id="test-email-json-controls"
             formatOnBlur
             mt={20}
             autosize
             styles={inputStyles}
-            label="Step Inputs"
-            value={stepInputs}
-            onChange={setStepInputs}
+            label="Step Controls"
+            value={stepControls}
+            onChange={setStepControls}
             minRows={12}
             validationError="Invalid JSON"
             rightSectionWidth={50}

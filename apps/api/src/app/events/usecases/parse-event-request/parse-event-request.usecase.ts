@@ -3,18 +3,24 @@ import * as Sentry from '@sentry/node';
 import * as hat from 'hat';
 import { merge } from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
+import { ModuleRef } from '@nestjs/core';
+
 import {
   buildNotificationTemplateIdentifierKey,
+  buildHasNotificationKey,
   CachedEntity,
   Instrument,
   InstrumentUsecase,
   IWorkflowDataDto,
-  IWorkflowJobDto,
   StorageHelperService,
   WorkflowQueueService,
   AnalyticsService,
   GetFeatureFlag,
   GetFeatureFlagCommand,
+  InvalidateCacheService,
+  requireInject,
+  IUseCaseInterface,
+  IDoBridgeRequestCommand,
 } from '@novu/application-generic';
 import {
   FeatureFlagsKeysEnum,
@@ -33,10 +39,17 @@ import {
   NotificationRepository,
   UserRepository,
   MemberRepository,
+  EnvironmentRepository,
+  EnvironmentEntity,
 } from '@novu/dal';
 import { Novu } from '@novu/node';
+import { DiscoverOutput, DiscoverWorkflowOutput } from '@novu/framework';
 
-import { ParseEventRequestCommand } from './parse-event-request.command';
+import {
+  ParseEventRequestBroadcastCommand,
+  ParseEventRequestCommand,
+  ParseEventRequestMulticastCommand,
+} from './parse-event-request.command';
 import { ApiException } from '../../../shared/exceptions/api.exception';
 import { VerifyPayload, VerifyPayloadCommand } from '../verify-payload';
 
@@ -44,9 +57,12 @@ const LOG_CONTEXT = 'ParseEventRequest';
 
 @Injectable()
 export class ParseEventRequest {
+  private doBridgeRequest: IUseCaseInterface<IDoBridgeRequestCommand, DiscoverOutput | null>;
+
   constructor(
     private notificationTemplateRepository: NotificationTemplateRepository,
     private notificationRepository: NotificationRepository,
+    private environmentRepository: EnvironmentRepository,
     private userRepository: UserRepository,
     private memberRepository: MemberRepository,
     private verifyPayload: VerifyPayload,
@@ -55,12 +71,31 @@ export class ParseEventRequest {
     private tenantRepository: TenantRepository,
     private workflowOverrideRepository: WorkflowOverrideRepository,
     private analyticsService: AnalyticsService,
-    private getFeatureFlag: GetFeatureFlag
-  ) {}
+    private getFeatureFlag: GetFeatureFlag,
+    private invalidateCacheService: InvalidateCacheService,
+    protected moduleRef: ModuleRef
+  ) {
+    this.doBridgeRequest = requireInject('do_bridge_request', this.moduleRef);
+  }
 
   @InstrumentUsecase()
-  async execute(command: ParseEventRequestCommand) {
+  public async execute(command: ParseEventRequestCommand) {
     const transactionId = command.transactionId || uuidv4();
+
+    const { environment, statelessWorkflowAllowed } = await this.isStatelessWorkflowAllowed(
+      command.environmentId,
+      command.bridgeUrl
+    );
+
+    if (statelessWorkflowAllowed && environment) {
+      const discoveredWorkflow = await this.queryDiscoverWorkflow(command, environment);
+
+      if (!discoveredWorkflow) {
+        throw new UnprocessableEntityException('workflow_not_found');
+      }
+
+      return await this.dispatchEvent(command, transactionId, discoveredWorkflow);
+    }
 
     const template = await this.getNotificationTemplateByTriggerIdentifier({
       environmentId: command.environmentId,
@@ -146,27 +181,45 @@ export class ParseEventRequest {
         template,
       })
     );
-
     command.payload = merge({}, defaultPayload, command.payload);
 
+    await this.sendInAppNudgeForTeamMemberInvite(command);
+
+    return await this.dispatchEvent(command, transactionId);
+  }
+
+  private async queryDiscoverWorkflow(
+    command: ParseEventRequestCommand,
+    environment: EnvironmentEntity
+  ): Promise<DiscoverWorkflowOutput | null> {
+    if (!command.bridgeUrl) {
+      return null;
+    }
+
+    const discover = await this.doBridgeRequest.execute({
+      bridgeUrl: command.bridgeUrl,
+      apiKey: environment.apiKeys[0].key,
+      action: 'discover',
+    });
+
+    if (!discover) {
+      return null;
+    }
+
+    return discover?.workflows?.find((findWorkflow) => findWorkflow.workflowId === command.identifier) || null;
+  }
+
+  private async dispatchEvent(
+    command: ParseEventRequestMulticastCommand | ParseEventRequestBroadcastCommand,
+    transactionId,
+    discoveredWorkflow?: DiscoverWorkflowOutput | null
+  ) {
     const jobData: IWorkflowDataDto = {
       ...command,
       actor: command.actor,
       transactionId,
+      bridgeWorkflow: discoveredWorkflow ?? undefined,
     };
-
-    const isEnabled = await this.getFeatureFlag.execute(
-      GetFeatureFlagCommand.create({
-        key: FeatureFlagsKeysEnum.IS_TEAM_MEMBER_INVITE_NUDGE_ENABLED,
-        organizationId: command.organizationId,
-        userId: 'system',
-        environmentId: 'system',
-      })
-    );
-
-    if (isEnabled && (process.env.NODE_ENV === 'dev' || process.env.NODE_ENV === 'production')) {
-      await this.sendInAppNudgeForTeamMemberInvite(command);
-    }
 
     await this.workflowQueueService.add({ name: transactionId, data: jobData, groupId: command.organizationId });
 
@@ -175,6 +228,25 @@ export class ParseEventRequest {
       status: TriggerEventStatusEnum.PROCESSED,
       transactionId,
     };
+  }
+
+  private async isStatelessWorkflowAllowed(
+    environmentId: string,
+    bridgeUrl: string | undefined
+  ): Promise<{ environment: EnvironmentEntity | null; statelessWorkflowAllowed: boolean }> {
+    if (!bridgeUrl) {
+      return { environment: null, statelessWorkflowAllowed: false };
+    }
+
+    const environment = await this.environmentRepository.findOne({ _id: environmentId });
+
+    if (!environment) {
+      throw new UnprocessableEntityException('Environment not found');
+    }
+
+    const statelessWorkflowAllowed = environment.name !== 'Production';
+
+    return { environment, statelessWorkflowAllowed };
   }
 
   @Instrument()
@@ -223,7 +295,7 @@ export class ParseEventRequest {
     }
   }
 
-  private modifyAttachments(command: ParseEventRequestCommand) {
+  private modifyAttachments(command: ParseEventRequestCommand): void {
     command.payload.attachments = command.payload.attachments.map((attachment) => ({
       ...attachment,
       name: attachment.name,
@@ -232,42 +304,83 @@ export class ParseEventRequest {
     }));
   }
 
-  public getReservedVariablesTypes(template: NotificationTemplateEntity): TriggerContextTypeEnum[] {
+  private getReservedVariablesTypes(template: NotificationTemplateEntity): TriggerContextTypeEnum[] {
     const reservedVariables = template.triggers[0].reservedVariables;
 
     return reservedVariables?.map((reservedVariable) => reservedVariable.type) || [];
   }
 
-  public async sendInAppNudgeForTeamMemberInvite(command: ParseEventRequestCommand) {
-    // check if this is first trigger
-    const notification = await this.notificationRepository.findOne({
-      _organizationId: command.organizationId,
-      _environmentId: command.environmentId,
-    });
+  @Instrument()
+  @CachedEntity({
+    builder: (command: ParseEventRequestCommand) =>
+      buildHasNotificationKey({
+        _organizationId: command.organizationId,
+      }),
+  })
+  private async getNotificationCount(command: ParseEventRequestCommand): Promise<number> {
+    return await this.notificationRepository.count(
+      {
+        _organizationId: command.organizationId,
+      },
+      1
+    );
+  }
 
-    if (notification) return;
+  @Instrument()
+  private async sendInAppNudgeForTeamMemberInvite(command: ParseEventRequestCommand): Promise<void> {
+    try {
+      const isEnabled = await this.getFeatureFlag.execute(
+        GetFeatureFlagCommand.create({
+          key: FeatureFlagsKeysEnum.IS_TEAM_MEMBER_INVITE_NUDGE_ENABLED,
+          organizationId: command.organizationId,
+          userId: 'system',
+          environmentId: 'system',
+        })
+      );
 
-    // check if user is using personal email
-    const user = await this.userRepository.findOne({
-      _id: command.userId,
-    });
+      if (!isEnabled) return;
 
-    if (this.checkEmail(user?.email)) return;
+      // check if this is first trigger
+      const notificationCount = await this.getNotificationCount(command);
 
-    // check if organization has more than 1 member
-    const membersCount = await this.memberRepository.count({
-      _organizationId: command.organizationId,
-    });
+      if (notificationCount > 0) return;
 
-    if (membersCount > 1) return;
+      /*
+       * After the first trigger, we invalidate the cache to ensure the next event trigger
+       * will update the cache with a count of 1.
+       */
+      this.invalidateCacheService.invalidateByKey({
+        key: buildHasNotificationKey({
+          _organizationId: command.organizationId,
+        }),
+      });
 
-    if ((process.env.NODE_ENV === 'dev' || process.env.NODE_ENV === 'production') && process.env.NOVU_API_KEY) {
-      if (!command.payload[INVITE_TEAM_MEMBER_NUDGE_PAYLOAD_KEY]) {
-        const novu = new Novu(process.env.NOVU_API_KEY);
+      // check if user is using personal email
+      const user = await this.userRepository.findOne({
+        _id: command.userId,
+      });
 
-        novu.trigger(
-          process.env.NOVU_INVITE_TEAM_MEMBER_NUDGE_TRIGGER_IDENTIFIER || 'in-app-invite-team-member-nudge',
-          {
+      if (!user) throw new ApiException('User not found');
+
+      if (this.isBlockedEmail(user.email)) return;
+
+      // check if organization has more than 1 member
+      const membersCount = await this.memberRepository.count(
+        {
+          _organizationId: command.organizationId,
+        },
+        2
+      );
+
+      if (membersCount > 1) return;
+
+      Logger.log('No notification found', LOG_CONTEXT);
+
+      if (process.env.NOVU_API_KEY) {
+        if (!command.payload[INVITE_TEAM_MEMBER_NUDGE_PAYLOAD_KEY]) {
+          const novu = new Novu(process.env.NOVU_API_KEY);
+
+          await novu.trigger(process.env.NOVU_INVITE_TEAM_MEMBER_NUDGE_TRIGGER_IDENTIFIER, {
             to: {
               subscriberId: command.userId,
               email: user?.email as string,
@@ -275,30 +388,33 @@ export class ParseEventRequest {
             payload: {
               [INVITE_TEAM_MEMBER_NUDGE_PAYLOAD_KEY]: true,
               webhookUrl: `${process.env.API_ROOT_URL}/v1/invites/webhook`,
+              organizationId: command.organizationId,
             },
-          }
-        );
+          });
 
-        this.analyticsService.track('Invite Nudge Sent', command.userId, {
-          _organization: command.organizationId,
-        });
+          this.analyticsService.track('Invite Nudge Sent', command.userId, {
+            _organization: command.organizationId,
+          });
+        }
       }
+    } catch (error) {
+      Logger.error(error, 'Invite nudge failed', LOG_CONTEXT);
     }
   }
 
-  public checkEmail(email) {
-    const includedDomains = [
-      '@gmail',
-      '@outlook',
-      '@yahoo',
-      '@icloud',
-      '@mail',
-      '@hotmail',
-      '@protonmail',
-      '@gmx',
-      '@novu',
-    ];
-
-    return includedDomains.some((domain) => email.includes(domain));
+  private isBlockedEmail(email: string): boolean {
+    return BLOCKED_DOMAINS.some((domain) => email.includes(domain));
   }
 }
+
+const BLOCKED_DOMAINS = [
+  '@gmail',
+  '@outlook',
+  '@yahoo',
+  '@icloud',
+  '@mail',
+  '@hotmail',
+  '@protonmail',
+  '@gmx',
+  '@novu',
+];

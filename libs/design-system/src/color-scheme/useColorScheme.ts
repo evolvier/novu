@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useLocalThemePreference, ColorSchemePreferenceEnum } from '@novu/shared-web';
+import { useLocalThemePreference, ColorSchemePreferenceEnum } from '../hooks/useLocalThemePreference';
 import { useColorScheme as useMantineColorScheme } from '@mantine/hooks';
 import { ColorScheme } from './ColorScheme';
 import { mapThemeStatusToColorScheme } from './mapThemeStatusToColorScheme';
 import { getColorSchemeHtmlElement } from './getColorSchemeHtmlElement';
 
 /**
- * Handle behavior for changing ColorSchemes or ThemeStatuses
+ * Handle behavior for changing ColorSchemes or ThemeStatuses.
+ *
+ * NOTE: This is not intended for getting the color scheme in application code:
+ * - For styling with Panda, use _dark or _light to create CSS targeted at a specific color scheme.
  */
 export const useColorScheme = () => {
   const { themeStatus, setThemeStatus } = useLocalThemePreference();

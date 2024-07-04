@@ -33,7 +33,7 @@ export class SendTestEmailCommand extends EnvironmentWithUserCommand {
 
   @IsOptional()
   @IsBoolean()
-  chimera?: boolean;
+  bridge?: boolean;
 
   @IsOptional()
   @IsString()
@@ -41,6 +41,8 @@ export class SendTestEmailCommand extends EnvironmentWithUserCommand {
 
   @IsOptional()
   inputs: any;
+  @IsOptional()
+  controls: any;
 
   @IsOptional()
   @IsString()

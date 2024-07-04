@@ -31,9 +31,9 @@ import {
   SelectVariant,
   ExecutionLogRoute,
   ExecutionLogRouteCommand,
-  IChimeraPushResponse,
 } from '@novu/application-generic';
-import type { IPushOptions } from '@novu/stateless';
+import { IPushOptions } from '@novu/stateless';
+import { PushOutput } from '@novu/framework';
 
 import { SendMessageCommand } from './send-message.command';
 import { SendMessageBase } from './send-message.base';
@@ -80,7 +80,11 @@ export class SendMessagePush extends SendMessageBase {
     const { subscriber, step: stepData } = command.compileContext;
 
     const template = await this.processVariants(command);
-    await this.initiateTranslations(command.environmentId, command.organizationId, subscriber.locale);
+    const i18nInstance = await this.initiateTranslations(
+      command.environmentId,
+      command.organizationId,
+      subscriber.locale
+    );
 
     if (template) {
       step.template = template;
@@ -91,7 +95,7 @@ export class SendMessagePush extends SendMessageBase {
     let title = '';
 
     try {
-      if (!command.chimeraData) {
+      if (!command.bridgeData) {
         content = await this.compileTemplate.execute(
           CompileTemplateCommand.create({
             template: step.template?.content as string,
@@ -287,12 +291,12 @@ export class SendMessagePush extends SendMessageBase {
   ): Promise<boolean> {
     try {
       const pushHandler = this.getIntegrationHandler(integration);
-      const chimeraOutputs = command.chimeraData?.outputs;
+      const bridgeOutputs = command.bridgeData?.outputs;
 
       const result = await pushHandler.send({
         target: [deviceToken],
-        title: (chimeraOutputs as IChimeraPushResponse)?.subject || title,
-        content: (chimeraOutputs as IChimeraPushResponse)?.body || content,
+        title: (bridgeOutputs as PushOutput)?.subject || title,
+        content: (bridgeOutputs as PushOutput)?.body || content,
         payload: command.payload,
         overrides,
         subscriber,
@@ -355,6 +359,7 @@ export class SendMessagePush extends SendMessageBase {
       overrides: overrides as never,
       providerId: integration.providerId,
       _jobId: command.jobId,
+      tags: command.tags,
     });
 
     await this.executionLogRoute.execute(

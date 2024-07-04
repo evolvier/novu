@@ -67,7 +67,7 @@ export class SendTestEmail {
     let html = '';
     let subject = '';
 
-    if (!command.chimera) {
+    if (!command.bridge) {
       const template = await this.compileEmailTemplateUsecase.execute(
         CompileEmailTemplateCommand.create({
           ...command,
@@ -87,16 +87,17 @@ export class SendTestEmail {
       subject = template.subject;
     }
 
-    if (command.chimera) {
+    if (command.bridge) {
       if (process.env.NOVU_ENTERPRISE === 'true' || process.env.CI_EE_TEST === 'true') {
         if (!require('@novu/ee-echo-api')?.PreviewStep) {
-          throw new ApiException('Chimera module is not loaded');
+          throw new ApiException('Echo api module is not loaded');
         }
         const service = this.moduleRef.get(require('@novu/ee-echo-api')?.PreviewStep, { strict: false });
         const data = await service.execute({
           workflowId: command.workflowId,
           stepId: command.stepId,
-          inputs: command.inputs,
+          inputs: command.controls || command.inputs,
+          controls: command.controls || command.inputs,
           data: command.payload,
           environmentId: command.environmentId,
           organizationId: command.organizationId,

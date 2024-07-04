@@ -63,6 +63,8 @@ export const UserProfilePasswordSidebar: React.FC<IUserProfilePasswordSidebarPro
 
   return (
     <SidebarFormless
+      // TODO: Move this into CSS
+      navigationWidth={272}
       isOpened={isOpened}
       onClose={onClose}
       customHeader={
